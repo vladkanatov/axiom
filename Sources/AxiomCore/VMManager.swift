@@ -1,8 +1,10 @@
 import Foundation
+import os
 
 public actor VMManager {
     private var machines: [UUID: VMInstance]
     private let provider: any VirtualizationProvider
+    private let logger = Logger(subsystem: "com.axiom", category: "VMManager")
 
     public init(
         provider: any VirtualizationProvider = NoopVirtualizationProvider(),
@@ -17,8 +19,22 @@ public actor VMManager {
     }
 
     public func createVM(configuration: VMConfiguration = .example()) async throws -> VMInstance {
-        let vm = VMInstance(configuration: configuration, state: .created)
+        let uuidString = try await provider.createVM(with: configuration, uuid: configuration.id.uuidString)
+        let identifier = UUID(uuidString: uuidString) ?? configuration.id
+        let vmConfiguration = VMConfiguration(
+            id: identifier,
+            name: configuration.name,
+            cpuCount: configuration.cpuCount,
+            memorySizeMiB: configuration.memorySizeMiB,
+            diskImages: configuration.diskImages,
+            network: configuration.network,
+            bootLoader: configuration.bootLoader,
+            console: configuration.console
+        )
+        let state = (try? await provider.getVMState(uuid: identifier.uuidString)) ?? .stopped
+        let vm = VMInstance(configuration: vmConfiguration, state: state)
         machines[vm.id] = vm
+        logger.info("Created VM \(vm.id.uuidString, privacy: .public)")
         return vm
     }
 
@@ -44,53 +60,71 @@ public actor VMManager {
             cpuCount: configuration.cpuCount,
             memorySizeMiB: configuration.memorySizeMiB,
             diskImages: configuration.diskImages,
-            network: configuration.network
+            network: configuration.network,
+            bootLoader: configuration.bootLoader,
+            console: configuration.console
         ), state: current.state)
         machines[id] = updated
         return updated
     }
 
     public func deleteVM(id: UUID) async throws {
+        try await provider.deleteVM(uuid: id.uuidString)
         machines[id] = nil
     }
 
     public func startVM(id: UUID) async throws -> VMInstance {
         let vm = ensureVM(id: id)
-        let updated = VMInstance(configuration: vm.configuration, state: .running, lastUpdated: .init())
+        let current = VMInstance(configuration: vm.configuration, state: .starting, lastUpdated: .init())
+        machines[id] = current
+        try await provider.startVM(uuid: id.uuidString)
+        let state = (try? await provider.getVMState(uuid: id.uuidString)) ?? .running
+        let updated = VMInstance(configuration: vm.configuration, state: state, lastUpdated: .init())
         machines[id] = updated
-        try await provider.start(vm: updated)
         return updated
     }
 
     public func stopVM(id: UUID) async throws -> VMInstance {
         let vm = ensureVM(id: id)
-        let updated = VMInstance(configuration: vm.configuration, state: .stopped, lastUpdated: .init())
+        let current = VMInstance(configuration: vm.configuration, state: .stopping, lastUpdated: .init())
+        machines[id] = current
+        try await provider.stopVM(uuid: id.uuidString, graceful: true)
+        let state = (try? await provider.getVMState(uuid: id.uuidString)) ?? .stopped
+        let updated = VMInstance(configuration: vm.configuration, state: state, lastUpdated: .init())
         machines[id] = updated
-        try await provider.stop(vm: updated)
         return updated
     }
 
     public func forceStopVM(id: UUID) async throws -> VMInstance {
         let vm = ensureVM(id: id)
-        let updated = VMInstance(configuration: vm.configuration, state: .stopped, lastUpdated: .init())
+        let current = VMInstance(configuration: vm.configuration, state: .stopping, lastUpdated: .init())
+        machines[id] = current
+        try await provider.stopVM(uuid: id.uuidString, graceful: false)
+        let state = (try? await provider.getVMState(uuid: id.uuidString)) ?? .stopped
+        let updated = VMInstance(configuration: vm.configuration, state: state, lastUpdated: .init())
         machines[id] = updated
-        try await provider.forceStop(vm: updated)
         return updated
     }
 
     public func pauseVM(id: UUID) async throws -> VMInstance {
         let vm = ensureVM(id: id)
-        let updated = VMInstance(configuration: vm.configuration, state: .paused, lastUpdated: .init())
+        let current = VMInstance(configuration: vm.configuration, state: .pausing, lastUpdated: .init())
+        machines[id] = current
+        try await provider.pauseVM(uuid: id.uuidString)
+        let state = (try? await provider.getVMState(uuid: id.uuidString)) ?? .paused
+        let updated = VMInstance(configuration: vm.configuration, state: state, lastUpdated: .init())
         machines[id] = updated
-        try await provider.pause(vm: updated)
         return updated
     }
 
     public func resumeVM(id: UUID) async throws -> VMInstance {
         let vm = ensureVM(id: id)
-        let updated = VMInstance(configuration: vm.configuration, state: .running, lastUpdated: .init())
+        let current = VMInstance(configuration: vm.configuration, state: .starting, lastUpdated: .init())
+        machines[id] = current
+        try await provider.resumeVM(uuid: id.uuidString)
+        let state = (try? await provider.getVMState(uuid: id.uuidString)) ?? .running
+        let updated = VMInstance(configuration: vm.configuration, state: state, lastUpdated: .init())
         machines[id] = updated
-        try await provider.resume(vm: updated)
         return updated
     }
 }

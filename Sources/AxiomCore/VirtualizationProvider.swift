@@ -1,23 +1,35 @@
 import Foundation
 
-public protocol VirtualizationProvider: Sendable {
-    func start(vm: VMInstance) async throws
-    func stop(vm: VMInstance) async throws
-    func forceStop(vm: VMInstance) async throws
-    func pause(vm: VMInstance) async throws
-    func resume(vm: VMInstance) async throws
-}
+@_exported import AxiomVirtualization
 
 public struct NoopVirtualizationProvider: VirtualizationProvider {
     public init() {}
 
-    public func start(vm: VMInstance) async throws {}
+    public func createVM(with configuration: VMConfiguration, uuid: String) async throws -> String {
+        uuid.isEmpty ? configuration.id.uuidString : uuid
+    }
 
-    public func stop(vm: VMInstance) async throws {}
+    public func startVM(uuid: String) async throws {}
 
-    public func forceStop(vm: VMInstance) async throws {}
+    public func stopVM(uuid: String, graceful: Bool) async throws {}
 
-    public func pause(vm: VMInstance) async throws {}
+    public func pauseVM(uuid: String) async throws {}
 
-    public func resume(vm: VMInstance) async throws {}
+    public func resumeVM(uuid: String) async throws {}
+
+    public func deleteVM(uuid: String) async throws {}
+
+    public func getVMState(uuid: String) async throws -> VMState {
+        .stopped
+    }
+
+    public func listVMs() async throws -> [String: VMState] {
+        [:]
+    }
+
+    public func eventStream() -> AsyncStream<VMEvent> {
+        AsyncStream { continuation in
+            continuation.finish()
+        }
+    }
 }
