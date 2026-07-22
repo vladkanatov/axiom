@@ -15,19 +15,24 @@ public struct AxiomApplicationConfiguration: Sendable {
 public final class AxiomApplication {
     public let configuration: AxiomApplicationConfiguration
     public let manager: VMManager
-    public let router: RESTRouter
+    public let router: Router
     public let server: HTTPServer
 
     public init(
         configuration: AxiomApplicationConfiguration = AxiomApplicationConfiguration(),
-        provider: any VirtualizationProvider = NoopVirtualizationProvider()
+        manager: VMManager
     ) {
         self.configuration = configuration
-        let manager = VMManager(provider: provider)
-        let router = RESTRouter(manager: manager)
         self.manager = manager
-        self.router = router
-        self.server = HTTPServer(host: configuration.host, port: configuration.port, router: router)
+        self.router = Router(vmm: manager)
+        self.server = HTTPServer(host: configuration.host, port: configuration.port, router: self.router)
+    }
+
+    public convenience init(
+        configuration: AxiomApplicationConfiguration = AxiomApplicationConfiguration(),
+        provider: any VirtualizationProvider = NoopVirtualizationProvider()
+    ) {
+        self.init(configuration: configuration, manager: VMManager(provider: provider))
     }
 
     @discardableResult

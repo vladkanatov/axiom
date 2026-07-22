@@ -11,13 +11,13 @@ import Darwin
 public final class HTTPServer: @unchecked Sendable {
     public let host: String
     public private(set) var port: Int
-    public let router: RESTRouter
+    public let router: Router
 
     private let acceptQueue = DispatchQueue(label: "com.axiom.http.accept")
     private var running = false
     private var listeningSocket: Int32 = -1
 
-    public init(host: String = "127.0.0.1", port: Int = 8889, router: RESTRouter) {
+    public init(host: String = "127.0.0.1", port: Int = 8889, router: Router) {
         self.host = host
         self.port = port
         self.router = router

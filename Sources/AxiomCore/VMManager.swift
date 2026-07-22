@@ -1,5 +1,7 @@
 import Foundation
 import os
+import Models
+import AxiomVirtualization
 
 public actor VMManager {
     private var machines: [UUID: VMInstance]
@@ -38,6 +40,21 @@ public actor VMManager {
         return vm
     }
 
+    public func createVM(config: VMConfiguration, uuid: String? = nil) async throws -> String {
+        let identifier = uuid.flatMap(UUID.init(uuidString:)) ?? config.id
+        let vm = try await createVM(configuration: VMConfiguration(
+            id: identifier,
+            name: config.name,
+            cpuCount: config.cpuCount,
+            memorySizeMiB: config.memorySizeMiB,
+            diskImages: config.diskImages,
+            network: config.network,
+            bootLoader: config.bootLoader,
+            console: config.console
+        ))
+        return vm.id.uuidString
+    }
+
     public func getVM(id: UUID) -> VMInstance? {
         machines[id]
     }
@@ -68,9 +85,40 @@ public actor VMManager {
         return updated
     }
 
+    public func updateVMConfig(uuid: String, config: VMConfiguration) async throws -> VMConfiguration? {
+        guard let identifier = UUID(uuidString: uuid) else {
+            throw AxiomError.invalidConfiguration("Invalid UUID: \(uuid)")
+        }
+
+        let currentState = try await getVMState(uuid: uuid)
+        guard currentState == .stopped else {
+            throw AxiomError.serverError("VM \(uuid) must be stopped before updating the configuration.")
+        }
+
+        let updated = try await updateVM(id: identifier, configuration: VMConfiguration(
+            id: identifier,
+            name: config.name,
+            cpuCount: config.cpuCount,
+            memorySizeMiB: config.memorySizeMiB,
+            diskImages: config.diskImages,
+            network: config.network,
+            bootLoader: config.bootLoader,
+            console: config.console
+        ))
+
+        return updated.configuration
+    }
+
     public func deleteVM(id: UUID) async throws {
         try await provider.deleteVM(uuid: id.uuidString)
         machines[id] = nil
+    }
+
+    public func deleteVM(uuid: String) async throws {
+        guard let identifier = UUID(uuidString: uuid) else {
+            throw AxiomError.invalidConfiguration("Invalid UUID: \(uuid)")
+        }
+        try await deleteVM(id: identifier)
     }
 
     public func startVM(id: UUID) async throws -> VMInstance {
@@ -84,6 +132,13 @@ public actor VMManager {
         return updated
     }
 
+    public func startVM(uuid: String) async throws {
+        guard let identifier = UUID(uuidString: uuid) else {
+            throw AxiomError.invalidConfiguration("Invalid UUID: \(uuid)")
+        }
+        _ = try await startVM(id: identifier)
+    }
+
     public func stopVM(id: UUID) async throws -> VMInstance {
         let vm = ensureVM(id: id)
         let current = VMInstance(configuration: vm.configuration, state: .stopping, lastUpdated: .init())
@@ -93,6 +148,17 @@ public actor VMManager {
         let updated = VMInstance(configuration: vm.configuration, state: state, lastUpdated: .init())
         machines[id] = updated
         return updated
+    }
+
+    public func stopVM(uuid: String, graceful: Bool) async throws {
+        guard let identifier = UUID(uuidString: uuid) else {
+            throw AxiomError.invalidConfiguration("Invalid UUID: \(uuid)")
+        }
+        if graceful {
+            _ = try await stopVM(id: identifier)
+        } else {
+            _ = try await forceStopVM(id: identifier)
+        }
     }
 
     public func forceStopVM(id: UUID) async throws -> VMInstance {
@@ -106,6 +172,13 @@ public actor VMManager {
         return updated
     }
 
+    public func pauseVM(uuid: String) async throws {
+        guard let identifier = UUID(uuidString: uuid) else {
+            throw AxiomError.invalidConfiguration("Invalid UUID: \(uuid)")
+        }
+        _ = try await pauseVM(id: identifier)
+    }
+
     public func pauseVM(id: UUID) async throws -> VMInstance {
         let vm = ensureVM(id: id)
         let current = VMInstance(configuration: vm.configuration, state: .pausing, lastUpdated: .init())
@@ -117,6 +190,13 @@ public actor VMManager {
         return updated
     }
 
+    public func resumeVM(uuid: String) async throws {
+        guard let identifier = UUID(uuidString: uuid) else {
+            throw AxiomError.invalidConfiguration("Invalid UUID: \(uuid)")
+        }
+        _ = try await resumeVM(id: identifier)
+    }
+
     public func resumeVM(id: UUID) async throws -> VMInstance {
         let vm = ensureVM(id: id)
         let current = VMInstance(configuration: vm.configuration, state: .starting, lastUpdated: .init())
@@ -126,5 +206,25 @@ public actor VMManager {
         let updated = VMInstance(configuration: vm.configuration, state: state, lastUpdated: .init())
         machines[id] = updated
         return updated
+    }
+
+    public func getVMConfig(uuid: String) async throws -> VMConfiguration? {
+        guard let identifier = UUID(uuidString: uuid) else {
+            throw AxiomError.invalidConfiguration("Invalid UUID: \(uuid)")
+        }
+
+        return machines[identifier]?.configuration
+    }
+
+    public func getVMState(uuid: String) async throws -> VMState {
+        guard let identifier = UUID(uuidString: uuid) else {
+            throw AxiomError.invalidConfiguration("Invalid UUID: \(uuid)")
+        }
+
+        if let state = machines[identifier]?.state {
+            return state
+        }
+
+        return try await provider.getVMState(uuid: uuid)
     }
 }

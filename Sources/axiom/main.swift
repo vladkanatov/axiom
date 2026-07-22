@@ -12,9 +12,10 @@ if #available(macOS 13.0, *) {
     provider = NoopVirtualizationProvider()
 }
 
+let manager = VMManager(provider: provider)
 let application = AxiomApplication(
     configuration: AxiomApplicationConfiguration(port: port),
-    provider: provider
+    manager: manager
 )
 
 do {
