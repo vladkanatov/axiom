@@ -7,7 +7,7 @@ public struct VMInstance: Codable, Sendable, Equatable {
 
     public init(
         configuration: VMConfiguration,
-        state: VMState = .created,
+        state: VMState = .stopped,
         lastUpdated: Date = .init()
     ) {
         self.configuration = configuration

@@ -1,9 +1,21 @@
 import Foundation
 import Dispatch
+import AxiomCore
 import AxiomRESTAPI
+import AxiomVirtualization
 
-let port = Int(ProcessInfo.processInfo.environment["AXIOM_PORT"] ?? "8080") ?? 8080
-let application = AxiomApplication(configuration: AxiomApplicationConfiguration(port: port))
+let port = Int(ProcessInfo.processInfo.environment["AXIOM_PORT"] ?? "8889") ?? 8889
+let provider: any VirtualizationProvider
+if #available(macOS 13.0, *) {
+    provider = VZProvider()
+} else {
+    provider = NoopVirtualizationProvider()
+}
+
+let application = AxiomApplication(
+    configuration: AxiomApplicationConfiguration(port: port),
+    provider: provider
+)
 
 do {
     let actualPort = try application.start()

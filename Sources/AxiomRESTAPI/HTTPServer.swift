@@ -17,7 +17,7 @@ public final class HTTPServer: @unchecked Sendable {
     private var running = false
     private var listeningSocket: Int32 = -1
 
-    public init(host: String = "127.0.0.1", port: Int = 8080, router: RESTRouter) {
+    public init(host: String = "127.0.0.1", port: Int = 8889, router: RESTRouter) {
         self.host = host
         self.port = port
         self.router = router
@@ -33,7 +33,7 @@ public final class HTTPServer: @unchecked Sendable {
             return port
         }
 
-        let socket = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+        let socket = socket(AF_INET, SOCK_STREAM, 0)
         guard socket >= 0 else {
             throw AxiomError.serverError("Unable to create listening socket.")
         }

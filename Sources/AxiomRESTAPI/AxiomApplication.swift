@@ -1,11 +1,12 @@
 import Foundation
 import AxiomCore
+import AxiomVirtualization
 
 public struct AxiomApplicationConfiguration: Sendable {
     public var host: String
     public var port: Int
 
-    public init(host: String = "127.0.0.1", port: Int = 8080) {
+    public init(host: String = "127.0.0.1", port: Int = 8889) {
         self.host = host
         self.port = port
     }
@@ -17,9 +18,12 @@ public final class AxiomApplication {
     public let router: RESTRouter
     public let server: HTTPServer
 
-    public init(configuration: AxiomApplicationConfiguration = AxiomApplicationConfiguration()) {
+    public init(
+        configuration: AxiomApplicationConfiguration = AxiomApplicationConfiguration(),
+        provider: any VirtualizationProvider = NoopVirtualizationProvider()
+    ) {
         self.configuration = configuration
-        let manager = VMManager()
+        let manager = VMManager(provider: provider)
         let router = RESTRouter(manager: manager)
         self.manager = manager
         self.router = router
