@@ -120,3 +120,25 @@ public struct ImageItemPayload: Codable, Sendable, Equatable {
         self.image = image
     }
 }
+
+/// Request payload for importing or creating disk images.
+public struct DiskImageMutationRequest: Codable, Sendable, Equatable {
+    public let source: String?
+    public let name: String?
+    public let sizeMiB: Int?
+
+    public init(source: String? = nil, name: String? = nil, sizeMiB: Int? = nil) {
+        self.source = source
+        self.name = name
+        self.sizeMiB = sizeMiB
+    }
+}
+
+/// Request payload for attaching an existing disk image to a VM.
+public struct DiskImageAttachRequest: Codable, Sendable, Equatable {
+    public let path: String
+
+    public init(path: String) {
+        self.path = path
+    }
+}

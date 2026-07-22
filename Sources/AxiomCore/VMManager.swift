@@ -82,6 +82,7 @@ public actor VMManager {
             console: configuration.console
         ), state: current.state)
         machines[id] = updated
+        try await provider.updateVMConfiguration(uuid: id.uuidString, configuration: updated.configuration)
         return updated
     }
 
@@ -106,6 +107,48 @@ public actor VMManager {
             console: config.console
         ))
 
+        return updated.configuration
+    }
+
+    public func listDiskImages() async throws -> [DiskImage] {
+        try await provider.listDiskImages()
+    }
+
+    public func importDiskImage(from source: String, name: String? = nil) async throws -> DiskImage {
+        try await provider.importDiskImage(from: source, name: name)
+    }
+
+    public func createEmptyDiskImage(name: String, sizeMiB: Int) async throws -> DiskImage {
+        try await provider.createEmptyDiskImage(name: name, sizeMiB: sizeMiB)
+    }
+
+    public func attachDiskImage(uuid: String, imagePath: String) async throws -> VMConfiguration? {
+        guard let identifier = UUID(uuidString: uuid) else {
+            throw AxiomError.invalidConfiguration("Invalid UUID: \(uuid)")
+        }
+
+        guard let vm = machines[identifier] else {
+            throw AxiomError.vmNotFound(identifier)
+        }
+
+        guard vm.state == .stopped else {
+            throw AxiomError.serverError("VM \(uuid) must be stopped before attaching a disk.")
+        }
+
+        let image = DiskImage(name: URL(fileURLWithPath: imagePath).deletingPathExtension().lastPathComponent, path: imagePath, source: imagePath)
+        let updatedConfiguration = VMConfiguration(
+            id: vm.configuration.id,
+            name: vm.configuration.name,
+            cpuCount: vm.configuration.cpuCount,
+            memorySizeMiB: vm.configuration.memorySizeMiB,
+            diskImages: vm.configuration.diskImages + [image.path],
+            network: vm.configuration.network,
+            bootLoader: vm.configuration.bootLoader,
+            console: vm.configuration.console
+        )
+
+        let updated = try await updateVM(id: identifier, configuration: updatedConfiguration)
+        _ = try await provider.attachDiskImage(image, toVM: identifier.uuidString)
         return updated.configuration
     }
 

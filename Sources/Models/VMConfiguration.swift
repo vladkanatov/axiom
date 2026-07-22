@@ -75,17 +75,23 @@ public struct DiskImage: Codable, Sendable, Equatable {
     public var name: String
     public var path: String
     public var format: String
+    public var sizeMiB: Int?
+    public var source: String?
 
     public init(
         id: UUID = UUID(),
         name: String,
         path: String,
-        format: String = "img"
+        format: String = "img",
+        sizeMiB: Int? = nil,
+        source: String? = nil
     ) {
         self.id = id
         self.name = name
         self.path = path
         self.format = format
+        self.sizeMiB = sizeMiB
+        self.source = source
     }
 
     public static func example() -> DiskImage {

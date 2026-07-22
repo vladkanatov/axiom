@@ -16,6 +16,7 @@ public enum VMEvent: Sendable, Equatable {
 @available(macOS 13.0, *)
 public protocol VirtualizationProvider: Sendable {
     func createVM(with configuration: VMConfiguration, uuid: String) async throws -> String
+    func updateVMConfiguration(uuid: String, configuration: VMConfiguration) async throws
     func startVM(uuid: String) async throws
     func stopVM(uuid: String, graceful: Bool) async throws
     func pauseVM(uuid: String) async throws
@@ -23,5 +24,9 @@ public protocol VirtualizationProvider: Sendable {
     func deleteVM(uuid: String) async throws
     func getVMState(uuid: String) async throws -> VMState
     func listVMs() async throws -> [String: VMState]
+    func listDiskImages() async throws -> [DiskImage]
+    func importDiskImage(from source: String, name: String?) async throws -> DiskImage
+    func createEmptyDiskImage(name: String, sizeMiB: Int) async throws -> DiskImage
+    func attachDiskImage(_ image: DiskImage, toVM uuid: String) async throws -> VMConfiguration
     func eventStream() -> AsyncStream<VMEvent>
 }
