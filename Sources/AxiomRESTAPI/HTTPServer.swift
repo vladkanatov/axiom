@@ -33,7 +33,7 @@ public final class HTTPServer: @unchecked Sendable {
             return port
         }
 
-        let socket = socket(AF_INET, Int32(SOCK_STREAM), 0)
+        let socket = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
         guard socket >= 0 else {
             throw AxiomError.serverError("Unable to create listening socket.")
         }
