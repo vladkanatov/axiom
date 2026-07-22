@@ -34,7 +34,7 @@ public struct RESTRouter: Sendable {
         case ("GET", "/images"):
             return .json(data: ImageCollectionResponse(images: [DiskImage.example()]))
         case ("POST", "/images"):
-            let importRequest = (try? JSONDecoder().decode(ImageImportRequest.self, from: request.body)) ?? ImageImportRequest(path: "/tmp/imported.img")
+            let importRequest = (try? JSONDecoder().decode(ImageImportRequest.self, from: request.body)) ?? ImageImportRequest(name: nil, path: "/tmp/imported.img")
             return .json(status: .created, data: ImageItemResponse(image: DiskImage(name: importRequest.name ?? "imported-image", path: importRequest.path)))
         default:
             return .json(status: .notFound, data: ErrorResponse(message: "Route not found"), error: "Route not found")

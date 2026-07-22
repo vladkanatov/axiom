@@ -5,7 +5,7 @@ public actor VMManager {
     private let provider: any VirtualizationProvider
 
     public init(
-        provider: any VirtualizationProvider = NativeVirtualizationProvider(),
+        provider: any VirtualizationProvider = NoopVirtualizationProvider(),
         initialVMs: [VMInstance] = []
     ) {
         self.provider = provider
