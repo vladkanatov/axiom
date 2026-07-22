@@ -67,8 +67,13 @@ public final class Router: @unchecked Sendable {
             return try await deleteVM(uuidString: route.segments[1])
         }
 
+        if method == "POST", route.segments.count == 3, route.segments[0] == "vms", route.segments[2] == "disks" {
+            return try await attachDisk(uuidString: route.segments[1], request: request)
+        }
+
         if method == "GET" && route.segments.count == 1 && route.segments[0] == "images" {
-            return makeAPIResponse(data: ImageCollectionPayload(images: [DiskImage.example()]))
+            let images = try await vmm.listDiskImages()
+            return makeAPIResponse(data: ImageCollectionPayload(images: images))
         }
 
         if method == "POST" && route.segments.count == 1 && route.segments[0] == "images" {
@@ -175,8 +180,30 @@ public final class Router: @unchecked Sendable {
     }
 
     private func importImage(request: HTTPRequest) async throws -> HTTPResponse {
-        let importRequest = try JSONDecoder().decode(ImageImportRequest.self, from: request.body)
-        return makeAPIResponse(status: .created, data: ImageItemPayload(image: DiskImage(name: importRequest.name ?? "imported-image", path: importRequest.path)))
+        let mutation = try JSONDecoder().decode(DiskImageMutationRequest.self, from: request.body)
+
+        if let source = mutation.source {
+            let image = try await vmm.importDiskImage(from: source, name: mutation.name)
+            return makeAPIResponse(status: .created, data: ImageItemPayload(image: image))
+        }
+
+        guard let sizeMiB = mutation.sizeMiB else {
+            throw HTTPAPIError(status: .badRequest, code: "INVALID_CONFIGURATION", message: "Either 'source' or 'sizeMiB' must be provided for image creation.")
+        }
+
+        let image = try await vmm.createEmptyDiskImage(name: mutation.name ?? "disk-image", sizeMiB: sizeMiB)
+        return makeAPIResponse(status: .created, data: ImageItemPayload(image: image))
+    }
+
+    private func attachDisk(uuidString: String, request: HTTPRequest) async throws -> HTTPResponse {
+        let uuid = try parseUUID(uuidString)
+        let attachRequest = try JSONDecoder().decode(DiskImageAttachRequest.self, from: request.body)
+        guard let configuration = try await vmm.attachDiskImage(uuid: uuid.uuidString, imagePath: attachRequest.path) else {
+            throw AxiomError.vmNotFound(uuid)
+        }
+
+        let state = try await vmm.getVMState(uuid: uuid.uuidString)
+        return makeAPIResponse(data: VMDetailPayload(uuid: uuid.uuidString, config: configuration, state: state.rawValue))
     }
 
     private func decodeConfiguration(from data: Data) throws -> VMConfiguration {
@@ -213,7 +240,3 @@ private struct RouteMatch: Sendable {
     let segments: [String]
 }
 
-private struct ImageImportRequest: Codable {
-    let name: String?
-    let path: String
-}

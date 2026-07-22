@@ -66,6 +66,18 @@ public actor VZProvider: VirtualizationProvider {
         return identifier
     }
 
+    public func updateVMConfiguration(uuid: String, configuration: VMConfiguration) async throws {
+        let identifier = try requireUUIDString(uuid)
+        guard configurations[identifier] != nil || fileManager.fileExists(atPath: configurationFile(for: identifier).path) else {
+            throw AxiomError.vmNotFound(UUID(uuidString: identifier) ?? UUID())
+        }
+
+        configurations[identifier] = configuration
+        machines[identifier] = nil
+        states[identifier] = states[identifier] ?? .stopped
+        try saveConfiguration(configuration, uuid: identifier)
+    }
+
     public func startVM(uuid: String) async throws {
         let identifier = try requireUUIDString(uuid)
         let machine = try machine(for: identifier)
@@ -191,6 +203,78 @@ public actor VZProvider: VirtualizationProvider {
         }
 
         return result
+    }
+
+    public func listDiskImages() async throws -> [DiskImage] {
+        let contents = (try? fileManager.contentsOfDirectory(
+            at: imagesDirectory,
+            includingPropertiesForKeys: [.fileSizeKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+
+        return contents.filter { $0.isFileURL }.map { url in
+            let metadata = try? url.resourceValues(forKeys: [.fileSizeKey])
+            let size = metadata?.fileSize.map { Int(ceil(Double($0) / 1_048_576.0)) }
+            return DiskImage(
+                name: url.deletingPathExtension().lastPathComponent,
+                path: url.path,
+                format: url.pathExtension.isEmpty ? "img" : url.pathExtension,
+                sizeMiB: size,
+                source: nil
+            )
+        }
+    }
+
+    public func importDiskImage(from source: String, name: String?) async throws -> DiskImage {
+        let sourceURL = try resolveSourceURL(source)
+        let imageName = sanitizedDiskImageName(name ?? sourceURL.deletingPathExtension().lastPathComponent)
+        let destination = uniqueImageURL(for: imageName, preferredExtension: sourceURL.pathExtension.isEmpty ? "img" : sourceURL.pathExtension)
+
+        if sourceURL.isFileURL {
+            try fileManager.copyItem(at: sourceURL, to: destination)
+        } else {
+            let (data, _) = try await URLSession.shared.data(from: sourceURL)
+            try data.write(to: destination, options: [.atomic])
+        }
+
+        return try imageDescriptor(for: destination, source: sourceURL.absoluteString)
+    }
+
+    public func createEmptyDiskImage(name: String, sizeMiB: Int) async throws -> DiskImage {
+        let imageName = sanitizedDiskImageName(name)
+        let destination = uniqueImageURL(for: imageName, preferredExtension: "img")
+        let sizeInBytes = UInt64(max(1, sizeMiB)) * 1_048_576
+
+        fileManager.createFile(atPath: destination.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: destination)
+        try handle.truncate(atOffset: sizeInBytes)
+        try handle.synchronize()
+        try handle.close()
+
+        return DiskImage(
+            name: imageName,
+            path: destination.path,
+            format: "img",
+            sizeMiB: sizeMiB,
+            source: "empty"
+        )
+    }
+
+    public func attachDiskImage(_ image: DiskImage, toVM uuid: String) async throws -> VMConfiguration {
+        let identifier = try requireUUIDString(uuid)
+        guard var configuration = configurations[identifier] ?? (try? loadConfiguration(for: identifier)) else {
+            throw AxiomError.vmNotFound(UUID(uuidString: identifier) ?? UUID())
+        }
+
+        if !configuration.diskImages.contains(image.path) {
+            configuration.diskImages.append(image.path)
+        }
+
+        configurations[identifier] = configuration
+        machines[identifier] = nil
+        states[identifier] = .stopped
+        try saveConfiguration(configuration, uuid: identifier)
+        return configuration
     }
 
     private func registerStreamContinuation(_ continuation: AsyncStream<VMEvent>.Continuation, token: UUID) {
@@ -396,6 +480,53 @@ public actor VZProvider: VirtualizationProvider {
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         let data = try JSONEncoder().encode(configuration)
         try data.write(to: configurationFile(for: uuid), options: [.atomic])
+    }
+
+    private func imageDescriptor(for url: URL, source: String?) throws -> DiskImage {
+        let metadata = try url.resourceValues(forKeys: [.fileSizeKey])
+        let size = metadata.fileSize.map { Int(ceil(Double($0) / 1_048_576.0)) }
+        return DiskImage(
+            name: url.deletingPathExtension().lastPathComponent,
+            path: url.path,
+            format: url.pathExtension.isEmpty ? "img" : url.pathExtension,
+            sizeMiB: size,
+            source: source
+        )
+    }
+
+    private func resolveSourceURL(_ source: String) throws -> URL {
+        if let url = URL(string: source), let scheme = url.scheme, !scheme.isEmpty {
+            return url
+        }
+
+        let fileURL = URL(fileURLWithPath: source)
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            throw AxiomError.invalidConfiguration("Disk image source does not exist: \(source)")
+        }
+
+        return fileURL
+    }
+
+    private func uniqueImageURL(for name: String, preferredExtension: String) -> URL {
+        let sanitized = sanitizedDiskImageName(name)
+        let ext = preferredExtension.isEmpty ? "img" : preferredExtension
+        var candidate = imagesDirectory.appendingPathComponent(sanitized).appendingPathExtension(ext)
+        var suffix = 1
+
+        while fileManager.fileExists(atPath: candidate.path) {
+            candidate = imagesDirectory.appendingPathComponent("\(sanitized)-\(suffix)").appendingPathExtension(ext)
+            suffix += 1
+        }
+
+        return candidate
+    }
+
+    private func sanitizedDiskImageName(_ name: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let transformed = name.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
+        let candidate = String(transformed).replacingOccurrences(of: "--", with: "-")
+        let trimmed = candidate.trimmingCharacters(in: CharacterSet(charactersIn: "-_"))
+        return trimmed.isEmpty ? "disk-image" : trimmed
     }
 
     private func configurationFile(for uuid: String) -> URL {
