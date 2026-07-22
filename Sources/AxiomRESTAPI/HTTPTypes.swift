@@ -7,6 +7,7 @@ public enum HTTPStatus: Int, Sendable {
     case badRequest = 400
     case unauthorized = 401
     case forbidden = 403
+    case conflict = 409
     case notFound = 404
     case methodNotAllowed = 405
     case internalServerError = 500
@@ -19,6 +20,7 @@ public enum HTTPStatus: Int, Sendable {
         case .badRequest: return "Bad Request"
         case .unauthorized: return "Unauthorized"
         case .forbidden: return "Forbidden"
+        case .conflict: return "Conflict"
         case .notFound: return "Not Found"
         case .methodNotAllowed: return "Method Not Allowed"
         case .internalServerError: return "Internal Server Error"
